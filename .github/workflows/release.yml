@@ -43,12 +43,26 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Cache vcpkg (Windows)
+        if: matrix.platform == 'windows-latest'
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\vcpkg\installed
+            C:\vcpkg\buildtrees
+          key: ${{ runner.os }}-vcpkg-tesseract-${{ hashFiles('**/vcpkg.json') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-tesseract-
+            ${{ runner.os }}-vcpkg-
+
       - name: Install Tesseract (Windows)
         if: matrix.platform == 'windows-latest'
         run: |
-          choco install vcpkg
-          vcpkg integrate install
-          vcpkg install tesseract:x64-windows-static-md leptonica:x64-windows-static-md
+          if (!(Test-Path "C:\vcpkg\installed\x64-windows-static-md\lib\tesseract*.lib")) {
+            choco install vcpkg
+            vcpkg integrate install
+            vcpkg install tesseract:x64-windows-static-md leptonica:x64-windows-static-md
+          }
           echo "VCPKG_ROOT=C:\vcpkg" >> $GITHUB_ENV
           echo "VCPKG_DEFAULT_TRIPLET=x64-windows-static-md" >> $GITHUB_ENV
           echo "TESSDATA_PREFIX=C:\vcpkg\installed\x64-windows-static-md\share\tessdata" >> $GITHUB_ENV
