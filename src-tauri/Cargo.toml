@@ -1,0 +1,33 @@
+[package]
+name = "uma-helper"
+version = "0.1.0"
+description = "Umamusume Event Helper - OCR tool for choice outcomes"
+authors = ["Uma Helper Team"]
+license = ""
+repository = ""
+edition = "2021"
+rust-version = "1.70"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0", features = [] }
+tauri-plugin-shell = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+screenshots = "0.7"
+image = { version = "0.25", features = ["png", "jpeg"] }
+tesseract = "0.13"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
+tauri-plugin-global-shortcut = "2.0"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
