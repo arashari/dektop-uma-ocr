@@ -36,7 +36,9 @@
     "category": "DeveloperTool",
     "copyright": "",
     "externalBin": [],
-    "icon": [],
+    "icon": [
+      "icons/icon.ico"
+    ],
     "longDescription": "",
     "macOS": {
       "entitlements": null,
