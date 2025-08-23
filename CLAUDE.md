@@ -12,6 +12,12 @@ The application uses Umamusume Pretty Derby event data from:
 - **Author**: aaronsantiago
 - **License**: Please refer to the original repository for licensing terms
 
+### Application Icon
+The application icon is sourced from:
+- **Source**: https://www.irasutoya.com/2024/06/blog-post_21.html
+- **Artist**: いらすとや (Irasutoya)
+- **Usage**: Free for personal and commercial use (subject to site terms)
+
 ## Architecture
 
 ### Frontend (dist/)

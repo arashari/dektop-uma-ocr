@@ -114,11 +114,16 @@ desktop-uma-ocr/
 ### Event Database
 This application uses Umamusume Pretty Derby event data from:
 
-**Repository**: https://github.com/aaronsantiago/umamusume-event-search
-**Original File**: `/src/lib/events.js`
-**Author**: aaronsantiago
+- **Repository**: https://github.com/aaronsantiago/umamusume-event-search
+- **Original File**: `/src/lib/events.js`
+- **Author**: aaronsantiago
+- **License**: Please refer to the original repository for licensing terms.
 
-**License**: Please refer to the original repository for licensing terms.
+### Application Icon
+The application icon is sourced from:
+- **Source**: https://www.irasutoya.com/2024/06/blog-post_21.html
+- **Artist**: いらすとや (Irasutoya)
+- **Usage**: Free for personal and commercial use (subject to site terms)
 
 ## Database Structure
 
@@ -127,8 +132,6 @@ The app loads events from `events.json` containing:
 - Choice options with stat outcomes (Speed, Power, Guts, etc.)
 - Support card interaction data
 - Comprehensive event matching for OCR results
-
-The application also creates a legacy SQLite database (`uma_events.db`) for development purposes.
 
 ## System Requirements
 

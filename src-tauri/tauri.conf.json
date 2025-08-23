@@ -1,6 +1,6 @@
 {
   "productName": "Uma Helper",
-  "version": "0.1.0",
+  "version": "1.0.5",
   "identifier": "com.umahelper.dev",
   "build": {
     "beforeBuildCommand": "",
@@ -37,7 +37,7 @@
     "copyright": "",
     "externalBin": [],
     "icon": [
-      "icons/icon.ico"
+      "icons/icon.png"
     ],
     "longDescription": "",
     "macOS": {
