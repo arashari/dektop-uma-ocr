@@ -12,9 +12,9 @@ jobs:
       matrix:
         include:
           - platform: 'ubuntu-22.04'
-            target: 'deb'
+            bundle: 'deb'
           - platform: 'windows-latest'
-            target: 'msi'
+            bundle: 'msi'
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -56,4 +56,4 @@ jobs:
           releaseBody: 'See the assets to download and install this version.'
           releaseDraft: true
           prerelease: false
-          args: '--target ${{ matrix.target }}'
+          args: '--bundles ${{ matrix.bundle }}'
