@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -43,8 +46,11 @@ jobs:
       - name: Install Tesseract (Windows)
         if: matrix.platform == 'windows-latest'
         run: |
-          choco install tesseract
-          echo "TESSDATA_PREFIX=C:\Program Files\Tesseract-OCR\tessdata" >> $GITHUB_ENV
+          choco install vcpkg
+          vcpkg integrate install
+          vcpkg install tesseract:x64-windows leptonica:x64-windows
+          echo "VCPKG_ROOT=C:\vcpkg" >> $GITHUB_ENV
+          echo "TESSDATA_PREFIX=C:\vcpkg\installed\x64-windows\share\tessdata" >> $GITHUB_ENV
 
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
