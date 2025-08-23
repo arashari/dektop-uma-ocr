@@ -34,7 +34,10 @@
             <div class="results-column">
                 <div class="results-header">
                     <h3>Matched Events</h3>
-                    <button id="clear-btn" class="clear-btn">Clear</button>
+                    <div class="header-buttons">
+                        <button id="debug-toggle" class="debug-toggle-btn">Debug</button>
+                        <button id="clear-btn" class="clear-btn">Clear</button>
+                    </div>
                 </div>
                 
                 <div id="results-area" class="results-area">
@@ -45,6 +48,52 @@
                     <div id="event-result" class="event-result hidden">
                         <div id="event-name" class="event-name"></div>
                         <div id="event-choices" class="event-choices"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Debug Column: Hidden by default -->
+            <div id="debug-column" class="debug-column hidden">
+                <div class="debug-header">
+                    <h3>Debug Panel</h3>
+                </div>
+                
+                <div class="debug-content">
+                    <!-- Captured Image -->
+                    <div class="debug-section">
+                        <h4>Captured Image</h4>
+                        <div id="captured-image-container" class="image-container">
+                            <div class="no-image">No image captured</div>
+                            <img id="captured-image" class="debug-image hidden" alt="Captured image">
+                        </div>
+                    </div>
+                    
+                    <!-- Processed Image -->
+                    <div class="debug-section">
+                        <h4>Processed Image</h4>
+                        <div id="processed-image-container" class="image-container">
+                            <div class="no-image">No image processed</div>
+                            <img id="processed-image" class="debug-image hidden" alt="Processed image">
+                        </div>
+                    </div>
+                    
+                    <!-- OCR Result -->
+                    <div class="debug-section">
+                        <h4>OCR Result</h4>
+                        <div id="ocr-result-container" class="ocr-result">
+                            <div class="no-result-text">No OCR result</div>
+                            <div id="ocr-result-text" class="ocr-text hidden"></div>
+                            <div id="ocr-confidence" class="ocr-confidence hidden"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Manual Override -->
+                    <div class="debug-section">
+                        <h4>Manual Override</h4>
+                        <div class="manual-override">
+                            <textarea id="manual-input" placeholder="Enter text to search for events..." rows="3"></textarea>
+                            <button id="manual-lookup-btn" class="manual-lookup-btn">Lookup Events</button>
+                        </div>
                     </div>
                 </div>
             </div>

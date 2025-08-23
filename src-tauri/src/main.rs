@@ -9,6 +9,7 @@ use tauri::State;
 use tesseract::Tesseract;
 use tracing::info;
 use strsim::jaro_winkler;
+use base64::Engine;
 
 // JSON Event structures (matching events.json format)
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -41,6 +42,8 @@ struct OcrResult {
     text: String,
     confidence: f32,
     matched_events: Vec<EventMatch>,
+    debug_captured_image: Option<String>, // Base64 encoded image
+    debug_processed_image: Option<String>, // Base64 encoded image
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -163,6 +166,17 @@ fn save_debug_image(image: &image::DynamicImage, filename: &str) -> Result<(), S
     
     info!("Debug image saved to: {}", debug_path.display());
     Ok(())
+}
+
+fn image_to_base64(image: &image::DynamicImage) -> Result<String, String> {
+    let mut image_bytes = Vec::new();
+    let mut cursor = std::io::Cursor::new(&mut image_bytes);
+    
+    image.write_to(&mut cursor, image::ImageFormat::Png)
+        .map_err(|e| format!("Failed to encode image to PNG: {}", e))?;
+    
+    let base64_string = base64::engine::general_purpose::STANDARD.encode(&image_bytes);
+    Ok(format!("data:image/png;base64,{}", base64_string))
 }
 
 fn crop_image(image: &image::DynamicImage, area: CaptureArea) -> Result<image::DynamicImage, String> {
@@ -405,10 +419,16 @@ async fn perform_ocr(image: &image::DynamicImage, state: &AppState) -> Result<Oc
     
     info!("Found {} matching events for text: '{}'", matched_events.len(), extracted_text);
     
+    // Convert images to base64 for debug panel
+    let debug_captured_image = image_to_base64(image).ok();
+    let debug_processed_image = image_to_base64(&processed_image).ok();
+    
     Ok(OcrResult {
         text: extracted_text,
         confidence,
         matched_events,
+        debug_captured_image,
+        debug_processed_image,
     })
 }
 
@@ -436,6 +456,17 @@ async fn lookup_event(extracted_text: String, state: State<'_, AppState>) -> Res
     Ok(matched_events)
 }
 
+#[tauri::command]
+async fn lookup_event_manual(input_text: String, state: State<'_, AppState>) -> Result<Vec<EventMatch>, String> {
+    info!("Manual event lookup for text: {}", input_text);
+    
+    let matched_events = match_events_with_text(&input_text, &state.events);
+    
+    info!("Manual lookup found {} matching events for text: '{}'", matched_events.len(), input_text);
+    
+    Ok(matched_events)
+}
+
 
 
 // Removed window creation commands as they're not supported in current Tauri version
@@ -454,7 +485,8 @@ fn main() {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             capture_screen_area,
-            lookup_event
+            lookup_event,
+            lookup_event_manual
         ])
         .run(tauri::generate_context!())
         .expect("Error while running tauri application");

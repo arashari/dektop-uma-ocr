@@ -62,6 +62,37 @@ class UmaHelper {
             });
             console.log('Clear button listener added');
         }
+
+        // Debug toggle
+        const debugToggle = document.getElementById('debug-toggle');
+        if (debugToggle) {
+            debugToggle.addEventListener('click', () => {
+                console.log('DEBUG TOGGLE CLICKED!');
+                this.toggleDebugPanel();
+            });
+            console.log('Debug toggle listener added');
+        }
+
+        // Manual lookup
+        const manualLookupBtn = document.getElementById('manual-lookup-btn');
+        if (manualLookupBtn) {
+            manualLookupBtn.addEventListener('click', () => {
+                console.log('MANUAL LOOKUP CLICKED!');
+                this.performManualLookup();
+            });
+            console.log('Manual lookup listener added');
+        }
+
+        // Manual input enter key
+        const manualInput = document.getElementById('manual-input');
+        if (manualInput) {
+            manualInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    this.performManualLookup();
+                }
+            });
+        }
     }
 
     setupResizableRectangle() {
@@ -108,7 +139,6 @@ class UmaHelper {
                 
                 // Get capture column boundaries
                 const captureColumn = document.querySelector('.capture-column');
-                const columnRect = captureColumn.getBoundingClientRect();
                 const columnWidth = captureColumn.offsetWidth;
                 const columnHeight = captureColumn.offsetHeight;
                 
@@ -379,6 +409,9 @@ class UmaHelper {
                 console.log('Text length:', ocrResult.text.length);
                 console.log('==================');
                 
+                // Update debug panel with OCR result
+                this.updateDebugPanel(ocrResult);
+                
                 // Display matched events or recognized text
                 if (ocrResult.matched_events && ocrResult.matched_events.length > 0) {
                     this.displayMatchedEvents(ocrResult.text, ocrResult.confidence, ocrResult.matched_events);
@@ -462,7 +495,7 @@ class UmaHelper {
                 const choicesContainer = document.createElement('div');
                 choicesContainer.style.cssText = 'margin-top: 8px;';
                 
-                eventMatch.event.choices.forEach((choice, choiceIndex) => {
+                eventMatch.event.choices.forEach((choice) => {
                     const choiceDiv = document.createElement('div');
                     choiceDiv.style.cssText = `
                         padding: 6px 8px; 
@@ -588,6 +621,7 @@ class UmaHelper {
     clearResults() {
         document.getElementById('event-result').classList.add('hidden');
         document.getElementById('no-result').classList.remove('hidden');
+        this.clearDebugPanel();
         this.updateStatus('Results cleared', 'success');
     }
 
@@ -616,6 +650,120 @@ class UmaHelper {
                     status.className = 'status';
                 }
             }, 3000);
+        }
+    }
+
+    toggleDebugPanel() {
+        const debugColumn = document.getElementById('debug-column');
+        const debugToggle = document.getElementById('debug-toggle');
+        
+        if (debugColumn.classList.contains('hidden')) {
+            debugColumn.classList.remove('hidden');
+            debugToggle.classList.add('active');
+            this.updateStatus('Debug panel opened', 'success');
+        } else {
+            debugColumn.classList.add('hidden');
+            debugToggle.classList.remove('active');
+            this.updateStatus('Debug panel closed', 'success');
+        }
+    }
+
+    updateDebugPanel(ocrResult) {
+        // Update captured image
+        if (ocrResult.debug_captured_image) {
+            const capturedImg = document.getElementById('captured-image');
+            const capturedContainer = document.getElementById('captured-image-container');
+            
+            capturedImg.src = ocrResult.debug_captured_image;
+            capturedImg.classList.remove('hidden');
+            capturedContainer.querySelector('.no-image').style.display = 'none';
+        }
+
+        // Update processed image
+        if (ocrResult.debug_processed_image) {
+            const processedImg = document.getElementById('processed-image');
+            const processedContainer = document.getElementById('processed-image-container');
+            
+            processedImg.src = ocrResult.debug_processed_image;
+            processedImg.classList.remove('hidden');
+            processedContainer.querySelector('.no-image').style.display = 'none';
+        }
+
+        // Update OCR result text
+        const ocrText = document.getElementById('ocr-result-text');
+        const ocrConfidence = document.getElementById('ocr-confidence');
+        const ocrContainer = document.getElementById('ocr-result-container');
+        
+        if (ocrResult.text && ocrResult.text.trim()) {
+            ocrText.textContent = ocrResult.text;
+            ocrConfidence.textContent = `Confidence: ${ocrResult.confidence.toFixed(1)}%`;
+            
+            ocrText.classList.remove('hidden');
+            ocrConfidence.classList.remove('hidden');
+            ocrContainer.querySelector('.no-result-text').style.display = 'none';
+        }
+    }
+
+    clearDebugPanel() {
+        // Clear images
+        const capturedImg = document.getElementById('captured-image');
+        const processedImg = document.getElementById('processed-image');
+        const capturedContainer = document.getElementById('captured-image-container');
+        const processedContainer = document.getElementById('processed-image-container');
+        
+        capturedImg.src = '';
+        processedImg.src = '';
+        capturedImg.classList.add('hidden');
+        processedImg.classList.add('hidden');
+        capturedContainer.querySelector('.no-image').style.display = 'block';
+        processedContainer.querySelector('.no-image').style.display = 'block';
+
+        // Clear OCR result
+        const ocrText = document.getElementById('ocr-result-text');
+        const ocrConfidence = document.getElementById('ocr-confidence');
+        const ocrContainer = document.getElementById('ocr-result-container');
+        
+        ocrText.textContent = '';
+        ocrConfidence.textContent = '';
+        ocrText.classList.add('hidden');
+        ocrConfidence.classList.add('hidden');
+        ocrContainer.querySelector('.no-result-text').style.display = 'block';
+
+        // Clear manual input
+        const manualInput = document.getElementById('manual-input');
+        manualInput.value = '';
+    }
+
+    async performManualLookup() {
+        const manualInput = document.getElementById('manual-input');
+        const inputText = manualInput.value.trim();
+        
+        if (!inputText) {
+            this.updateStatus('Please enter text to search', 'error');
+            return;
+        }
+
+        try {
+            this.updateStatus('Searching for events...', 'processing');
+
+            const invoke = getInvokeFunction();
+            if (!invoke) {
+                throw new Error('Tauri invoke function not available');
+            }
+
+            const matchedEvents = await invoke('lookup_event_manual', { inputText });
+
+            if (matchedEvents && matchedEvents.length > 0) {
+                this.displayMatchedEvents(inputText, 100, matchedEvents);
+                this.updateStatus(`Manual lookup found ${matchedEvents.length} event(s)`, 'success');
+            } else {
+                this.displayRecognizedText(inputText, 100);
+                this.updateStatus('Manual lookup found no matching events', 'error');
+            }
+
+        } catch (error) {
+            console.error('Manual lookup failed:', error);
+            this.updateStatus(`Manual lookup failed: ${error}`, 'error');
         }
     }
 }
