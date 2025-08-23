@@ -10,8 +10,25 @@ use std::sync::Mutex;
 use tauri::State;
 use tesseract::Tesseract;
 use tracing::{error, info};
+use strsim::jaro_winkler;
 
-// Database structures
+// JSON Event structures (matching events.json format)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct JsonEvent {
+    name: String,
+    character_name: String,
+    relation_type: String,
+    choices: Vec<Choice>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct Choice {
+    text: String,
+    number: String,
+    outcome: String,
+}
+
+// Legacy Database structure (keeping for compatibility)
 #[derive(Debug, Serialize, Deserialize)]
 struct Event {
     id: Option<i64>,
@@ -26,10 +43,20 @@ struct Event {
     notes: Option<String>,
 }
 
+// Enhanced OCR result with event matching
+#[derive(Debug, Serialize, Deserialize)]
+struct EventMatch {
+    event: JsonEvent,
+    match_confidence: f32,
+    match_type: String, // "event_name" or "choice_text"
+    matched_text: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct OcrResult {
     text: String,
     confidence: f32,
+    matched_events: Vec<EventMatch>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -43,6 +70,7 @@ struct CaptureArea {
 // Application state
 struct AppState {
     db: Mutex<Connection>,
+    events: Vec<JsonEvent>,
 }
 
 impl AppState {
@@ -86,15 +114,56 @@ impl AppState {
             ],
         )?;
 
+        // Load JSON events
+        let events = load_events_json()?;
+        info!("Loaded {} events from events.json", events.len());
+
         Ok(AppState {
             db: Mutex::new(conn),
+            events,
         })
     }
 }
 
+fn load_events_json() -> Result<Vec<JsonEvent>> {
+    // Try multiple possible locations for events.json
+    let possible_paths = [
+        "events.json",           // Current directory
+        "../events.json",        // Parent directory (from src-tauri)
+    ];
+    
+    let mut events_content = String::new();
+    let mut found_path = None;
+    
+    for path in &possible_paths {
+        match std::fs::read_to_string(path) {
+            Ok(content) => {
+                events_content = content;
+                found_path = Some(path);
+                break;
+            }
+            Err(_) => continue,
+        }
+    }
+    
+    if found_path.is_none() {
+        return Err(anyhow::anyhow!(
+            "Failed to find events.json in any of these locations: {:?}. Make sure events.json exists in the project root directory.",
+            possible_paths
+        ));
+    }
+    
+    info!("Loading events from: {}", found_path.unwrap());
+    
+    let events: Vec<JsonEvent> = serde_json::from_str(&events_content)
+        .map_err(|e| anyhow::anyhow!("Failed to parse events.json: {}", e))?;
+    
+    Ok(events)
+}
+
 // Tauri commands
 #[tauri::command]
-async fn capture_screen_area(area: CaptureArea) -> Result<OcrResult, String> {
+async fn capture_screen_area(area: CaptureArea, state: State<'_, AppState>) -> Result<OcrResult, String> {
     info!("Capturing screen area: {:?}", area);
     
     // Get all screens
@@ -124,7 +193,7 @@ async fn capture_screen_area(area: CaptureArea) -> Result<OcrResult, String> {
     save_debug_image(&cropped, "captured_image.png")?;
     
     // Perform OCR
-    perform_ocr(&cropped).await
+    perform_ocr(&cropped, &state).await
 }
 
 fn save_debug_image(image: &image::DynamicImage, filename: &str) -> Result<(), String> {
@@ -234,7 +303,102 @@ fn invert_image(gray_image: &image::ImageBuffer<image::Luma<u8>, Vec<u8>>) -> im
     inverted
 }
 
-async fn perform_ocr(image: &image::DynamicImage) -> Result<OcrResult, String> {
+fn match_events_with_text(extracted_text: &str, events: &[JsonEvent]) -> Vec<EventMatch> {
+    let mut matches = Vec::new();
+    let threshold = 0.6; // Minimum similarity threshold
+    
+    // Clean and normalize extracted text for better matching
+    let normalized_text = normalize_text(extracted_text);
+    
+    for event in events {
+        // Try matching against event name
+        let event_name_similarity = jaro_winkler(&normalize_text(&event.name), &normalized_text) as f32;
+        if event_name_similarity >= threshold {
+            matches.push(EventMatch {
+                event: event.clone(),
+                match_confidence: event_name_similarity,
+                match_type: "event_name".to_string(),
+                matched_text: event.name.clone(),
+            });
+        }
+        
+        // Try matching against choice texts
+        for choice in &event.choices {
+            let choice_similarity = jaro_winkler(&normalize_text(&choice.text), &normalized_text) as f32;
+            if choice_similarity >= threshold {
+                matches.push(EventMatch {
+                    event: event.clone(),
+                    match_confidence: choice_similarity,
+                    match_type: "choice_text".to_string(),
+                    matched_text: choice.text.clone(),
+                });
+            }
+        }
+        
+        // Try partial word matching for OCR errors
+        if event_name_similarity < threshold {
+            let partial_similarity = calculate_partial_match(&normalized_text, &normalize_text(&event.name));
+            if partial_similarity >= threshold + 0.1_f32 { // Higher threshold for partial matches
+                matches.push(EventMatch {
+                    event: event.clone(),
+                    match_confidence: partial_similarity,
+                    match_type: "partial_event_name".to_string(),
+                    matched_text: event.name.clone(),
+                });
+            }
+        }
+    }
+    
+    // Sort by confidence (highest first) and limit results
+    matches.sort_by(|a, b| b.match_confidence.partial_cmp(&a.match_confidence).unwrap());
+    matches.truncate(5); // Return top 5 matches
+    
+    matches
+}
+
+fn normalize_text(text: &str) -> String {
+    text.to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<&str>>()
+        .join(" ")
+}
+
+fn calculate_partial_match(ocr_text: &str, event_text: &str) -> f32 {
+    let ocr_words: Vec<&str> = ocr_text.split_whitespace().collect();
+    let event_words: Vec<&str> = event_text.split_whitespace().collect();
+    
+    if ocr_words.is_empty() || event_words.is_empty() {
+        return 0.0;
+    }
+    
+    let mut total_score = 0.0_f32;
+    let mut matched_words = 0;
+    
+    for ocr_word in &ocr_words {
+        let mut best_match = 0.0_f32;
+        for event_word in &event_words {
+            let similarity = jaro_winkler(ocr_word, event_word) as f32;
+            if similarity > best_match {
+                best_match = similarity;
+            }
+        }
+        if best_match > 0.7 { // Word-level threshold
+            total_score += best_match;
+            matched_words += 1;
+        }
+    }
+    
+    if matched_words > 0 {
+        total_score / ocr_words.len() as f32
+    } else {
+        0.0
+    }
+}
+
+async fn perform_ocr(image: &image::DynamicImage, state: &AppState) -> Result<OcrResult, String> {
     info!("Performing OCR on captured image");
     
     // Preprocess image for better OCR
@@ -279,52 +443,41 @@ async fn perform_ocr(image: &image::DynamicImage) -> Result<OcrResult, String> {
     
     info!("OCR completed. Text length: {}, Confidence: {}", text.len(), confidence);
     
+    // Match OCR text against events
+    let extracted_text = text.trim().to_string();
+    let matched_events = match_events_with_text(&extracted_text, &state.events);
+    
+    info!("Found {} matching events for text: '{}'", matched_events.len(), extracted_text);
+    
     Ok(OcrResult {
-        text: text.trim().to_string(),
+        text: extracted_text,
         confidence,
+        matched_events,
     })
 }
 
 #[tauri::command]
-async fn lookup_event(extracted_text: String, state: State<'_, AppState>) -> Result<Option<Event>, String> {
-    info!("Looking up event for text: {}", extracted_text);
+async fn lookup_event(extracted_text: String, state: State<'_, AppState>) -> Result<Vec<EventMatch>, String> {
+    info!("Looking up events for text: {}", extracted_text);
     
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
+    let matched_events = match_events_with_text(&extracted_text, &state.events);
     
-    let mut stmt = db
-        .prepare("SELECT id, event_name, event_name_jp, choice1_text, choice1_effects, choice2_text, choice2_effects, choice3_text, choice3_effects, notes FROM events WHERE event_name LIKE ?1 OR event_name_jp LIKE ?1")
-        .map_err(|e| format!("Failed to prepare statement: {}", e))?;
-    
-    let search_pattern = format!("%{}%", extracted_text);
-    let event_result = stmt.query_row([&search_pattern], |row| {
-        Ok(Event {
-            id: Some(row.get(0)?),
-            event_name: row.get(1)?,
-            event_name_jp: row.get(2).ok(),
-            choice1_text: row.get(3).ok(),
-            choice1_effects: row.get(4).ok(),
-            choice2_text: row.get(5).ok(),
-            choice2_effects: row.get(6).ok(),
-            choice3_text: row.get(7).ok(),
-            choice3_effects: row.get(8).ok(),
-            notes: row.get(9).ok(),
-        })
-    });
-    
-    match event_result {
-        Ok(event) => {
-            info!("Found event: {}", event.event_name);
-            Ok(Some(event))
-        }
-        Err(rusqlite::Error::QueryReturnedNoRows) => {
-            info!("No event found for text: {}", extracted_text);
-            Ok(None)
-        }
-        Err(e) => {
-            error!("Database error: {}", e);
-            Err(format!("Database error: {}", e))
+    if matched_events.is_empty() {
+        info!("No events found for text: {}", extracted_text);
+    } else {
+        info!("Found {} matching events for text: '{}'", matched_events.len(), extracted_text);
+        for (i, event_match) in matched_events.iter().enumerate() {
+            info!(
+                "  {}. {} (confidence: {:.2}, type: {})", 
+                i + 1, 
+                event_match.matched_text, 
+                event_match.match_confidence,
+                event_match.match_type
+            );
         }
     }
+    
+    Ok(matched_events)
 }
 
 #[tauri::command]

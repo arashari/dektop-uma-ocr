@@ -8,38 +8,47 @@
 </head>
 <body>
     <div class="floating-window">
-        <!-- Targeting Rectangle -->
-        <div id="targeting-rectangle" class="targeting-rectangle">
-        </div>
-        
-        <!-- Capture Section -->
-        <button id="capture-btn" class="capture-btn">
-            📷 Capture Event
-        </button>
-        
-        <!-- Loading Indicator -->
-        <div id="loading" class="loading hidden">
-            <div class="spinner"></div>
-            <span>Processing...</span>
-        </div>
-        
-        <!-- Results Area -->
-        <div id="results-area" class="results-area">
-            <div id="no-result" class="no-result">
-                <!-- Empty placeholder to avoid OCR interference -->
+        <div class="main-layout">
+            <!-- Left Column: Capture Area -->
+            <div class="capture-column">
+                <!-- Targeting Rectangle -->
+                <div id="targeting-rectangle" class="targeting-rectangle">
+                </div>
+                
+                <!-- Capture Section -->
+                <button id="capture-btn" class="capture-btn">
+                    📷 Capture Event
+                </button>
+                
+                <!-- Loading Indicator -->
+                <div id="loading" class="loading hidden">
+                    <div class="spinner"></div>
+                    <span>Processing...</span>
+                </div>
+                
+                <!-- Status -->
+                <div id="status" class="status">Ready</div>
             </div>
             
-            <div id="event-result" class="event-result hidden">
-                <div id="event-name" class="event-name"></div>
-                <div id="event-choices" class="event-choices"></div>
+            <!-- Right Column: Results -->
+            <div class="results-column">
+                <div class="results-header">
+                    <h3>Matched Events</h3>
+                    <button id="clear-btn" class="clear-btn">Clear</button>
+                </div>
+                
+                <div id="results-area" class="results-area">
+                    <div id="no-result" class="no-result">
+                        Select an area and capture to find matching events
+                    </div>
+                    
+                    <div id="event-result" class="event-result hidden">
+                        <div id="event-name" class="event-name"></div>
+                        <div id="event-choices" class="event-choices"></div>
+                    </div>
+                </div>
             </div>
         </div>
-        
-        <!-- Clear Button -->
-        <button id="clear-btn" class="clear-btn">Clear Results</button>
-        
-        <!-- Status -->
-        <div id="status" class="status">Ready</div>
     </div>
 
     <script src="script.js"></script>

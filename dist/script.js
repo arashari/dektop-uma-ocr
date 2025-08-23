@@ -106,8 +106,21 @@ class UmaHelper {
                 const deltaX = e.clientX - startX;
                 const deltaY = e.clientY - startY;
                 
-                const newTop = Math.max(20, Math.min(window.innerHeight - rectangle.offsetHeight - 100, startTop + deltaY));
-                const newLeft = Math.max(12, Math.min(window.innerWidth - rectangle.offsetWidth - 12, startLeft + deltaX));
+                // Get capture column boundaries
+                const captureColumn = document.querySelector('.capture-column');
+                const columnRect = captureColumn.getBoundingClientRect();
+                const columnWidth = captureColumn.offsetWidth;
+                const columnHeight = captureColumn.offsetHeight;
+                
+                // Calculate boundaries within the capture column
+                // Allow dragging below UI components by starting after the capture button area
+                const minTop = 80; // Start below UI components (button + loading + status)
+                const maxTop = columnHeight - rectangle.offsetHeight - 10; // Small margin at bottom
+                const minLeft = 0;
+                const maxLeft = columnWidth - rectangle.offsetWidth;
+                
+                const newTop = Math.max(minTop, Math.min(maxTop, startTop + deltaY));
+                const newLeft = Math.max(minLeft, Math.min(maxLeft, startLeft + deltaX));
                 
                 rectangle.style.top = newTop + 'px';
                 rectangle.style.left = newLeft + 'px';
@@ -119,8 +132,19 @@ class UmaHelper {
                 const deltaX = e.clientX - startX;
                 const deltaY = e.clientY - startY;
                 
-                const newWidth = Math.max(100, startWidth + deltaX);
-                const newHeight = Math.max(50, startHeight + deltaY);
+                // Get capture column boundaries for resizing
+                const captureColumn = document.querySelector('.capture-column');
+                const columnWidth = captureColumn.offsetWidth;
+                const columnHeight = captureColumn.offsetHeight;
+                const currentTop = parseInt(getComputedStyle(rectangle).top);
+                const currentLeft = parseInt(getComputedStyle(rectangle).left);
+                
+                // Calculate maximum sizes based on current position
+                const maxWidth = columnWidth - currentLeft;
+                const maxHeight = columnHeight - currentTop - 10; // Small margin at bottom
+                
+                const newWidth = Math.max(100, Math.min(maxWidth, startWidth + deltaX));
+                const newHeight = Math.max(50, Math.min(maxHeight, startHeight + deltaY));
                 
                 rectangle.style.width = newWidth + 'px';
                 rectangle.style.height = newHeight + 'px';
@@ -162,11 +186,12 @@ class UmaHelper {
                 throw new Error('Targeting rectangle not found');
             }
 
-            // Get rectangle position and size
+            // Get rectangle position and size relative to capture column
             const rectRect = rectangle.getBoundingClientRect();
-            const windowRect = document.querySelector('.floating-window').getBoundingClientRect();
+            const captureColumn = document.querySelector('.capture-column');
+            const captureColumnRect = captureColumn.getBoundingClientRect();
             
-            // Calculate screen coordinates
+            // Calculate screen coordinates relative to the capture column
             const screenX = window.screenX || window.screenLeft || 0;
             const screenY = window.screenY || window.screenTop || 0;
             
@@ -174,9 +199,11 @@ class UmaHelper {
             const windowDecorationHeight = (window.outerHeight - window.innerHeight);
             const titleBarHeight = windowDecorationHeight || 30;
             
+            // Calculate the absolute screen position of the targeting rectangle
+            // This ensures we capture only the area defined by the rectangle within the capture column
             const area = {
-                x: Math.round(screenX + rectRect.left),
-                y: Math.round(screenY + titleBarHeight + rectRect.top),
+                x: Math.round(screenX + captureColumnRect.left + (rectRect.left - captureColumnRect.left)),
+                y: Math.round(screenY + titleBarHeight + captureColumnRect.top + (rectRect.top - captureColumnRect.top)),
                 width: Math.round(rectRect.width),
                 height: Math.round(rectRect.height)
             };
@@ -184,7 +211,7 @@ class UmaHelper {
             // Debug console output
             console.log('=== CAPTURE AREA ===');
             console.log('Rectangle rect:', rectRect);
-            console.log('Window rect:', windowRect);
+            console.log('Capture column rect:', captureColumnRect);
             console.log('Screen position:', { screenX, screenY });
             console.log('Title bar offset:', titleBarHeight);
             console.log('Final screen area:', area);
@@ -194,18 +221,30 @@ class UmaHelper {
             
         } catch (error) {
             console.error('Error calculating targeting area:', error);
-            // Fallback to default rectangle size
-            const windowRect = document.querySelector('.floating-window').getBoundingClientRect();
-            const screenX = window.screenX || window.screenLeft || 0;
-            const screenY = window.screenY || window.screenTop || 0;
-            const titleBarHeight = 30;
+            // Fallback to default rectangle size within capture column
+            const captureColumn = document.querySelector('.capture-column');
+            const captureColumnRect = captureColumn ? captureColumn.getBoundingClientRect() : null;
             
-            return {
-                x: Math.round(screenX + windowRect.left + 12),
-                y: Math.round(screenY + titleBarHeight + windowRect.top + 60),
-                width: Math.round(windowRect.width - 24),
-                height: Math.round(windowRect.height - 140)
-            };
+            if (captureColumnRect) {
+                const screenX = window.screenX || window.screenLeft || 0;
+                const screenY = window.screenY || window.screenTop || 0;
+                const titleBarHeight = 30;
+                
+                return {
+                    x: Math.round(screenX + captureColumnRect.left + 12),
+                    y: Math.round(screenY + titleBarHeight + captureColumnRect.top + 12),
+                    width: Math.round(captureColumnRect.width - 24),
+                    height: Math.round(captureColumnRect.height - 80)
+                };
+            } else {
+                // Final fallback if capture column not found
+                return {
+                    x: Math.round((window.screenX || 0) + 50),
+                    y: Math.round((window.screenY || 0) + 80),
+                    width: 200,
+                    height: 150
+                };
+            }
         }
     }
 
@@ -336,12 +375,18 @@ class UmaHelper {
                 console.log('Raw text:', ocrResult.text);
                 console.log('Trimmed text:', ocrResult.text.trim());
                 console.log('Confidence:', ocrResult.confidence);
+                console.log('Matched events:', ocrResult.matched_events);
                 console.log('Text length:', ocrResult.text.length);
                 console.log('==================');
                 
-                // Show recognized text
-                this.displayRecognizedText(ocrResult.text, ocrResult.confidence);
-                this.updateStatus(`Text recognized (${ocrResult.confidence.toFixed(1)}% confidence)`, 'success');
+                // Display matched events or recognized text
+                if (ocrResult.matched_events && ocrResult.matched_events.length > 0) {
+                    this.displayMatchedEvents(ocrResult.text, ocrResult.confidence, ocrResult.matched_events);
+                    this.updateStatus(`Found ${ocrResult.matched_events.length} matching event(s)`, 'success');
+                } else {
+                    this.displayRecognizedText(ocrResult.text, ocrResult.confidence);
+                    this.updateStatus(`Text recognized but no events matched (${ocrResult.confidence.toFixed(1)}% confidence)`, 'success');
+                }
             } else {
                 console.log('=== OCR RESULT ===');
                 console.log('No text detected or empty result');
@@ -359,12 +404,103 @@ class UmaHelper {
         }
     }
 
+    displayMatchedEvents(extractedText, confidence, matchedEvents) {
+        const eventSection = document.getElementById('event-result');
+        const nameDiv = document.getElementById('event-name');
+        const choicesDiv = document.getElementById('event-choices');
+        
+        nameDiv.textContent = `Matched Events (${matchedEvents.length} found)`;
+        
+        // Clear previous content
+        choicesDiv.innerHTML = '';
+        
+        // Add extracted text section
+        const textDiv = document.createElement('div');
+        textDiv.style.cssText = 'padding: 8px; background: #f8f9fa; border-radius: 4px; margin-bottom: 12px; font-size: 11px;';
+        textDiv.innerHTML = `
+            <div style="font-weight: 600; margin-bottom: 4px; color: #2c3e50;">
+                Extracted Text (${confidence.toFixed(1)}% OCR confidence):
+            </div>
+            <div style="background: white; padding: 6px; border-radius: 3px; font-family: monospace; border: 1px solid #dee2e6;">
+                "${extractedText}"
+            </div>
+        `;
+        choicesDiv.appendChild(textDiv);
+        
+        // Display each matched event
+        matchedEvents.forEach((eventMatch, index) => {
+            const eventDiv = document.createElement('div');
+            eventDiv.style.cssText = `
+                padding: 10px; 
+                background: ${index === 0 ? '#e8f5e8' : '#f8f9fa'}; 
+                border-radius: 4px; 
+                margin-bottom: 8px; 
+                border-left: 4px solid ${index === 0 ? '#28a745' : '#6c757d'};
+            `;
+            
+            // Event header
+            const headerDiv = document.createElement('div');
+            headerDiv.style.cssText = 'font-weight: 600; margin-bottom: 6px; font-size: 12px; color: #2c3e50;';
+            headerDiv.innerHTML = `
+                ${index === 0 ? '🏆 ' : ''}${eventMatch.event.name}
+                <span style="font-size: 10px; color: #6c757d; margin-left: 8px;">
+                    ${(eventMatch.match_confidence * 100).toFixed(1)}% match (${eventMatch.match_type})
+                </span>
+            `;
+            eventDiv.appendChild(headerDiv);
+            
+            // Character info
+            if (eventMatch.event.character_name || eventMatch.event.relation_type) {
+                const charDiv = document.createElement('div');
+                charDiv.style.cssText = 'font-size: 10px; color: #666; margin-bottom: 8px;';
+                charDiv.textContent = `${eventMatch.event.character_name} • ${eventMatch.event.relation_type}`;
+                eventDiv.appendChild(charDiv);
+            }
+            
+            // Choices
+            if (eventMatch.event.choices && eventMatch.event.choices.length > 0) {
+                const choicesContainer = document.createElement('div');
+                choicesContainer.style.cssText = 'margin-top: 8px;';
+                
+                eventMatch.event.choices.forEach((choice, choiceIndex) => {
+                    const choiceDiv = document.createElement('div');
+                    choiceDiv.style.cssText = `
+                        padding: 6px 8px; 
+                        background: white; 
+                        border-radius: 3px; 
+                        margin-bottom: 4px; 
+                        font-size: 10px;
+                        border: 1px solid #e9ecef;
+                    `;
+                    
+                    choiceDiv.innerHTML = `
+                        <div style="font-weight: 600; margin-bottom: 2px;">
+                            Choice ${choice.number}: ${choice.text}
+                        </div>
+                        <div style="color: #28a745; font-size: 9px;">
+                            ${choice.outcome}
+                        </div>
+                    `;
+                    choicesContainer.appendChild(choiceDiv);
+                });
+                
+                eventDiv.appendChild(choicesContainer);
+            }
+            
+            choicesDiv.appendChild(eventDiv);
+        });
+        
+        // Show event result, hide no-result
+        eventSection.classList.remove('hidden');
+        document.getElementById('no-result').classList.add('hidden');
+    }
+
     displayRecognizedText(text, confidence) {
         const eventSection = document.getElementById('event-result');
         const nameDiv = document.getElementById('event-name');
         const choicesDiv = document.getElementById('event-choices');
         
-        nameDiv.textContent = 'Recognized Text';
+        nameDiv.textContent = 'No Events Matched';
         
         // Clear previous choices and show recognized text
         choicesDiv.innerHTML = `
@@ -374,6 +510,9 @@ class UmaHelper {
                 </div>
                 <div style="background: white; padding: 8px; border-radius: 3px; font-family: monospace; font-size: 11px; border: 1px solid #dee2e6;">
                     "${text}"
+                </div>
+                <div style="margin-top: 8px; font-size: 10px; color: #666; text-align: center;">
+                    No matching events found in database
                 </div>
             </div>
         `;

@@ -12,7 +12,7 @@
     "windows": [
       {
         "title": "Uma Helper",
-        "width": 280,
+        "width": 490,
         "height": 420,
         "resizable": true,
         "fullscreen": false,
@@ -21,9 +21,9 @@
         "transparent": true,
         "skipTaskbar": false,
         "center": true,
-        "minWidth": 250,
+        "minWidth": 490,
         "minHeight": 300,
-        "maxWidth": 500,
+        "maxWidth": 640,
         "maxHeight": 800
       }
     ],

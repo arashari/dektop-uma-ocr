@@ -109,14 +109,26 @@ desktop-uma-ocr/
 - **Always Updated**: Built-in updater support
 - **Secure**: Sandboxed execution environment
 
+## 📚 Data Sources & Credits
+
+### Event Database
+This application uses Umamusume Pretty Derby event data from:
+
+**Repository**: https://github.com/aaronsantiago/umamusume-event-search
+**Original File**: `/src/lib/events.js`
+**Author**: aaronsantiago
+
+**License**: Please refer to the original repository for licensing terms.
+
 ## Database Structure
 
-The app creates an SQLite database (`uma_events.db`) with:
-- Event names and descriptions
-- Choice options and their stat effects
-- Outcome data for informed decision-making
+The app loads events from `events.json` containing:
+- Event names and character information
+- Choice options with stat outcomes (Speed, Power, Guts, etc.)
+- Support card interaction data
+- Comprehensive event matching for OCR results
 
-Events can be added by modifying the Rust source code or through future UI additions.
+The application also creates a legacy SQLite database (`uma_events.db`) for development purposes.
 
 ## System Requirements
 

@@ -3,6 +3,15 @@
 ## Project Overview
 A modern desktop OCR application built with Tauri for extracting text from screen areas, specifically designed for Umamusume Pretty Derby game event text recognition.
 
+## Data Sources & Credits
+
+### Event Database
+The application uses Umamusume Pretty Derby event data from:
+- **Repository**: https://github.com/aaronsantiago/umamusume-event-search
+- **File**: `/src/lib/events.js`
+- **Author**: aaronsantiago
+- **License**: Please refer to the original repository for licensing terms
+
 ## Architecture
 
 ### Frontend (dist/)
