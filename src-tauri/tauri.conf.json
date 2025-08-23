@@ -45,9 +45,9 @@
       "providerShortName": null,
       "signingIdentity": null
     },
-    "resources": [],
+    "resources": ["../events.json"],
     "shortDescription": "",
-    "targets": "all",
+    "targets": ["deb", "msi"],
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",

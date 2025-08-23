@@ -3,13 +3,11 @@
 
 use anyhow::Result;
 use image::GenericImageView;
-use rusqlite::Connection;
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
 use tauri::State;
 use tesseract::Tesseract;
-use tracing::{error, info};
+use tracing::info;
 use strsim::jaro_winkler;
 
 // JSON Event structures (matching events.json format)
@@ -28,20 +26,6 @@ struct Choice {
     outcome: String,
 }
 
-// Legacy Database structure (keeping for compatibility)
-#[derive(Debug, Serialize, Deserialize)]
-struct Event {
-    id: Option<i64>,
-    event_name: String,
-    event_name_jp: Option<String>,
-    choice1_text: Option<String>,
-    choice1_effects: Option<String>,
-    choice2_text: Option<String>,
-    choice2_effects: Option<String>,
-    choice3_text: Option<String>,
-    choice3_effects: Option<String>,
-    notes: Option<String>,
-}
 
 // Enhanced OCR result with event matching
 #[derive(Debug, Serialize, Deserialize)]
@@ -69,57 +53,16 @@ struct CaptureArea {
 
 // Application state
 struct AppState {
-    db: Mutex<Connection>,
     events: Vec<JsonEvent>,
 }
 
 impl AppState {
     fn new() -> Result<Self> {
-        // Store database in user's home directory to avoid dev rebuild loops
-        let home_dir = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let db_path = format!("{}/uma_events.db", home_dir);
-        let conn = Connection::open(db_path)?;
-        
-        // Create tables
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_name TEXT UNIQUE NOT NULL,
-                event_name_jp TEXT,
-                choice1_text TEXT,
-                choice1_effects TEXT,
-                choice2_text TEXT,
-                choice2_effects TEXT,
-                choice3_text TEXT,
-                choice3_effects TEXT,
-                notes TEXT
-            )",
-            [],
-        )?;
-
-        // Insert sample data
-        conn.execute(
-            "INSERT OR IGNORE INTO events 
-            (event_name, event_name_jp, choice1_text, choice1_effects, choice2_text, choice2_effects, choice3_text, choice3_effects)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            [
-                "Sample Training Event",
-                "Sample Training Event JP",
-                "Train harder",
-                "+15 Speed, -10 Stamina",
-                "Take it easy", 
-                "+5 Wisdom, +10 Health",
-                "Focus on technique",
-                "+10 Technique, +5 Guts"
-            ],
-        )?;
-
         // Load JSON events
         let events = load_events_json()?;
         info!("Loaded {} events from events.json", events.len());
 
         Ok(AppState {
-            db: Mutex::new(conn),
             events,
         })
     }
@@ -127,10 +70,24 @@ impl AppState {
 
 fn load_events_json() -> Result<Vec<JsonEvent>> {
     // Try multiple possible locations for events.json
-    let possible_paths = [
-        "events.json",           // Current directory
-        "../events.json",        // Parent directory (from src-tauri)
+    let mut possible_paths = vec![
+        "events.json".to_string(),           // Current directory
+        "../events.json".to_string(),        // Parent directory (from src-tauri)
     ];
+    
+    // For bundled app, try various resource locations
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            // Try in same directory as executable
+            possible_paths.push(exe_dir.join("events.json").to_string_lossy().to_string());
+            
+            // Try in share directory (Linux package structure)
+            possible_paths.push(exe_dir.join("../share/uma-helper/events.json").to_string_lossy().to_string());
+            
+            // Try in resources subdirectory
+            possible_paths.push(exe_dir.join("resources/events.json").to_string_lossy().to_string());
+        }
+    }
     
     let mut events_content = String::new();
     let mut found_path = None;
@@ -147,13 +104,12 @@ fn load_events_json() -> Result<Vec<JsonEvent>> {
     }
     
     if found_path.is_none() {
-        return Err(anyhow::anyhow!(
-            "Failed to find events.json in any of these locations: {:?}. Make sure events.json exists in the project root directory.",
-            possible_paths
-        ));
+        // Fallback to embedded events.json
+        info!("Using embedded events.json as fallback");
+        events_content = include_str!("../../events.json").to_string();
+    } else {
+        info!("Loading events from: {}", found_path.unwrap());
     }
-    
-    info!("Loading events from: {}", found_path.unwrap());
     
     let events: Vec<JsonEvent> = serde_json::from_str(&events_content)
         .map_err(|e| anyhow::anyhow!("Failed to parse events.json: {}", e))?;
@@ -480,76 +436,7 @@ async fn lookup_event(extracted_text: String, state: State<'_, AppState>) -> Res
     Ok(matched_events)
 }
 
-#[tauri::command]
-async fn add_event(event: Event, state: State<'_, AppState>) -> Result<i64, String> {
-    info!("Adding new event: {}", event.event_name);
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    
-    let result = db.execute(
-        "INSERT INTO events (event_name, event_name_jp, choice1_text, choice1_effects, choice2_text, choice2_effects, choice3_text, choice3_effects, notes)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        [
-            &event.event_name,
-            &event.event_name_jp.unwrap_or_default(),
-            &event.choice1_text.unwrap_or_default(),
-            &event.choice1_effects.unwrap_or_default(),
-            &event.choice2_text.unwrap_or_default(),
-            &event.choice2_effects.unwrap_or_default(),
-            &event.choice3_text.unwrap_or_default(),
-            &event.choice3_effects.unwrap_or_default(),
-            &event.notes.unwrap_or_default(),
-        ],
-    );
-    
-    match result {
-        Ok(_) => {
-            let id = db.last_insert_rowid();
-            info!("Event added successfully with ID: {}", id);
-            Ok(id)
-        }
-        Err(e) => {
-            error!("Failed to add event: {}", e);
-            Err(format!("Failed to add event: {}", e))
-        }
-    }
-}
 
-#[tauri::command]
-async fn get_all_events(state: State<'_, AppState>) -> Result<Vec<Event>, String> {
-    info!("Getting all events");
-    
-    let db = state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
-    
-    let mut stmt = db
-        .prepare("SELECT id, event_name, event_name_jp, choice1_text, choice1_effects, choice2_text, choice2_effects, choice3_text, choice3_effects, notes FROM events ORDER BY event_name")
-        .map_err(|e| format!("Failed to prepare statement: {}", e))?;
-    
-    let event_iter = stmt
-        .query_map([], |row| {
-            Ok(Event {
-                id: Some(row.get(0)?),
-                event_name: row.get(1)?,
-                event_name_jp: row.get(2).ok(),
-                choice1_text: row.get(3).ok(),
-                choice1_effects: row.get(4).ok(),
-                choice2_text: row.get(5).ok(),
-                choice2_effects: row.get(6).ok(),
-                choice3_text: row.get(7).ok(),
-                choice3_effects: row.get(8).ok(),
-                notes: row.get(9).ok(),
-            })
-        })
-        .map_err(|e| format!("Failed to query events: {}", e))?;
-    
-    let mut events = Vec::new();
-    for event in event_iter {
-        events.push(event.map_err(|e| format!("Failed to parse event: {}", e))?);
-    }
-    
-    info!("Retrieved {} events", events.len());
-    Ok(events)
-}
 
 // Removed window creation commands as they're not supported in current Tauri version
 // The frontend will handle selection overlay directly
@@ -567,9 +454,7 @@ fn main() {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             capture_screen_area,
-            lookup_event,
-            add_event,
-            get_all_events
+            lookup_event
         ])
         .run(tauri::generate_context!())
         .expect("Error while running tauri application");
