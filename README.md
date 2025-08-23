@@ -1,33 +1,35 @@
-# Umamusume Event Helper
+# Desktop UMA OCR
 
-A modern desktop application built with Tauri for extracting event text from Umamusume Pretty Derby and displaying choice outcomes.
+A modern desktop OCR application built with Tauri for real-time text extraction from screen areas. Features intelligent text recognition with automatic white-text detection and a transparent floating window interface.
 
-## Features
+## ✨ Key Features
 
-- **Self-Contained Executable**: No external dependencies required
-- **Floating Window**: Always-on-top draggable window that stays above the game
-- **Screen Capture**: Click and drag to select event dialog areas  
-- **Built-in OCR**: English text extraction using bundled Tesseract
-- **Event Database**: SQLite database with choice outcomes
-- **Native Performance**: Rust backend with web frontend
-- **Cross-Platform**: Windows, macOS, and Linux support
+- **🎯 Smart OCR**: Automatic black/white text detection with intelligent preprocessing
+- **🪟 Floating Window**: Transparent, always-on-top window with resizable targeting rectangle  
+- **🔧 Interactive UI**: Drag to move, resize from bottom-right corner
+- **🎮 Game-Friendly**: Designed for Umamusume Pretty Derby but works with any application
+- **🚀 Native Performance**: Rust backend with lightweight web frontend
+- **🔍 Debug Mode**: Saves processed images for troubleshooting
+- **📱 Cross-Platform**: Windows, macOS, and Linux support
 
-## Quick Start
-
-### Download & Run
-
-1. **Download** the latest release for your platform
-2. **Run** the executable - no installation needed
-3. **Grant permissions** when prompted for screen capture
+## 🚀 Quick Start
 
 ### Usage
 
-1. **Launch the app** → Small floating window appears
-2. **Position the window** anywhere on screen (it stays above the game)
-3. **When an event appears in Umamusume** → Click "📷 Capture Event"
-4. **Select the event dialog area** → Click and drag over the event text
-5. **View the results** → All choice outcomes are displayed
-6. **Make your choice** in the game based on the displayed effects
+1. **Launch the app** → Transparent floating window appears
+2. **Position the window** over the text you want to capture
+3. **Adjust the targeting rectangle**:
+   - **Drag** the rectangle to move it
+   - **Resize** by dragging the bottom-right corner
+4. **Click "📷 Capture Event"** → OCR processes the targeted area
+5. **View results** → Extracted text appears with confidence score
+
+### Tips for Best Results
+
+- **Black text on light backgrounds**: Works perfectly out of the box
+- **White text on dark backgrounds**: Automatically detected and optimized
+- **Small text**: Resize window smaller for better targeting
+- **Large text blocks**: Expand the targeting rectangle as needed
 
 ## Building from Source
 
@@ -72,14 +74,31 @@ desktop-uma-ocr/
 └── README.md               # This file
 ```
 
-## Technology Stack
+## 🛠️ Technology Stack
 
-- **Backend**: Rust with Tauri framework
-- **OCR**: Tesseract-rs (bundled, no external installation)
-- **Database**: SQLite with Rusqlite
-- **Screen Capture**: Screenshots crate
-- **Frontend**: HTML/CSS/JavaScript
-- **Build System**: Cargo + Tauri CLI
+- **Framework**: Tauri 2.0 (Rust + Web frontend)
+- **OCR Engine**: Tesseract-rs with intelligent preprocessing
+- **Screen Capture**: Screenshots crate (cross-platform)
+- **Image Processing**: Image crate with custom algorithms
+- **Frontend**: Vanilla HTML/CSS/JavaScript (no build process)
+- **Database**: SQLite (optional, for future event data)
+
+## 🧠 Smart OCR Features
+
+### Automatic Text Detection
+- **Brightness Analysis**: Samples image to detect white text on dark backgrounds
+- **Smart Inversion**: Automatically converts white text to black for optimal OCR
+- **Preprocessing Pipeline**: Grayscale → Scale → Invert (if needed) → Contrast enhance
+
+### Image Processing
+- **2x Upscaling**: Lanczos3 filtering for crisp text enlargement  
+- **Minimal Processing**: Light contrast enhancement preserves text quality
+- **Debug Output**: Saves `captured_image.png` and `processed_image.png`
+
+### Tesseract Optimization
+- **Character Whitelist**: Common text characters for better accuracy
+- **Automatic Segmentation**: Lets Tesseract choose optimal processing mode
+- **Confidence Scoring**: Shows OCR reliability percentage
 
 ## Key Benefits
 
@@ -105,34 +124,47 @@ Events can be added by modifying the Rust source code or through future UI addit
 - **macOS**: macOS 10.15 or later  
 - **Linux**: Modern Linux distribution with GTK 3.24+
 
-## Troubleshooting
+## 🐛 Troubleshooting
 
 **App won't start:**
-- Check if you have required system libraries
-- Run from terminal to see error messages
+- Check if you have required system libraries (GTK on Linux)
+- Run from terminal to see error messages: `./uma-helper`
 
 **Screen capture not working:**
 - Grant screen recording permissions when prompted
-- On macOS: System Preferences → Security & Privacy → Screen Recording
+- **macOS**: System Preferences → Security & Privacy → Screen Recording
+- **Linux**: May need to run with proper display permissions
 
 **OCR accuracy issues:**
-- Ensure event text is clearly visible
-- Try capturing a larger area around the text
-- Works best with high-contrast, clear text
+- Check the debug images (`captured_image.png`, `processed_image.png`) in project folder
+- **White text**: Should automatically invert - check console for "Inverting image" message
+- **Small text**: Try resizing the targeting rectangle to be more precise
+- **Mixed colors**: Works best with consistent text color in targeted area
 
-## Development
+**Window positioning issues:**
+- Rectangle not capturing correctly: Check console for coordinate calculations
+- Window too transparent: Adjust opacity in CSS if needed
 
-This is a Tauri application combining Rust backend performance with modern web frontend flexibility. The app is designed to be:
+## 🔧 Development
 
-- **Lightweight**: Minimal resource usage
-- **Responsive**: Fast OCR and database queries  
-- **Maintainable**: Clean separation of concerns
-- **Extensible**: Easy to add new features
+See `CLAUDE.md` for detailed technical documentation.
 
-## Support
+### Project Structure
+- **Frontend**: `dist/` - Vanilla HTML/CSS/JS (no build process)
+- **Backend**: `src-tauri/` - Rust with Tauri framework
+- **Debug Images**: `captured_image.png`, `processed_image.png` (auto-generated)
+- **Database**: `uma_events.db` (SQLite, created at runtime)
+
+### Key Design Principles
+- **Lightweight**: Minimal resource usage with smart algorithms
+- **Responsive**: Real-time screen capture and OCR processing
+- **Maintainable**: Clean Rust backend with simple frontend
+- **Extensible**: Modular design for easy feature additions
+
+## 🆘 Support
 
 For issues and feature requests:
-1. Check the troubleshooting section above
-2. Ensure you're using the latest version
-3. Test with clear, high-contrast event screenshots
-4. Report bugs with system information and error logs
+1. Check debug images in project folder for OCR troubleshooting
+2. Review console output for detailed processing information  
+3. Test with various text colors and sizes
+4. Report bugs with system info and debug images
