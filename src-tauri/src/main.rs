@@ -148,21 +148,47 @@ async fn capture_screen_area(area: CaptureArea, state: State<'_, AppState>) -> R
     // Crop to the specified area
     let cropped = crop_image(&dynamic_image, area)?;
     
-    // Save captured image for debugging
-    save_debug_image(&cropped, "captured_image.png")?;
+    // Save captured image for debugging (optional - don't fail OCR if this fails)
+    if let Err(e) = save_debug_image(&cropped, "captured_image.png") {
+        info!("Warning: Could not save debug image: {}", e);
+    }
     
     // Perform OCR
     perform_ocr(&cropped, &state).await
 }
 
+fn get_writable_debug_dir() -> Result<std::path::PathBuf, String> {
+    // Try multiple locations for saving debug images
+    let possible_dirs = vec![
+        // User's temp directory (most reliable)
+        std::env::temp_dir(),
+        // User's home directory
+        dirs::home_dir().unwrap_or_else(|| std::env::temp_dir()).join("uma-ocr-debug"),
+        // Current working directory (fallback)
+        std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir()),
+    ];
+    
+    for dir in possible_dirs {
+        // Create directory if it doesn't exist
+        if let Ok(()) = std::fs::create_dir_all(&dir) {
+            // Test write permissions
+            let test_file = dir.join("test_write.tmp");
+            if std::fs::write(&test_file, "test").is_ok() {
+                let _ = std::fs::remove_file(&test_file); // Clean up
+                return Ok(dir);
+            }
+        }
+    }
+    
+    Err("No writable directory found for debug images".to_string())
+}
+
 fn save_debug_image(image: &image::DynamicImage, filename: &str) -> Result<(), String> {
-    // Save to project root directory for easy access during development
-    let current_dir = std::env::current_dir()
-        .map_err(|e| format!("Failed to get current directory: {}", e))?;
-    let debug_path = current_dir.join(filename);
+    let debug_dir = get_writable_debug_dir()?;
+    let debug_path = debug_dir.join(filename);
     
     image.save(&debug_path)
-        .map_err(|e| format!("Failed to save debug image: {}", e))?;
+        .map_err(|e| format!("Failed to save debug image to {}: {}", debug_path.display(), e))?;
     
     info!("Debug image saved to: {}", debug_path.display());
     Ok(())
@@ -368,14 +394,63 @@ fn calculate_partial_match(ocr_text: &str, event_text: &str) -> f32 {
     }
 }
 
+fn get_tessdata_path() -> Option<String> {
+    // Try various common tessdata locations
+    let mut possible_paths = vec![
+        std::env::var("TESSDATA_PREFIX").ok(),
+    ];
+    
+    // Add executable directory paths
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            possible_paths.push(Some(exe_dir.join("tessdata").to_string_lossy().to_string()));
+            possible_paths.push(Some(exe_dir.join("resources").join("tessdata").to_string_lossy().to_string()));
+        }
+    }
+    
+    // Add platform-specific paths
+    if cfg!(target_os = "windows") {
+        possible_paths.extend(vec![
+            Some("C:\\Program Files\\Tesseract-OCR\\tessdata".to_string()),
+            Some("C:\\Program Files (x86)\\Tesseract-OCR\\tessdata".to_string()),
+            Some("tessdata".to_string()), // Current directory
+        ]);
+    } else {
+        possible_paths.extend(vec![
+            Some("/usr/share/tesseract-ocr/4.00/tessdata".to_string()),
+            Some("/usr/share/tesseract-ocr/tessdata".to_string()),
+            Some("/usr/local/share/tessdata".to_string()),
+            Some("/opt/homebrew/share/tessdata".to_string()), // macOS Homebrew
+            Some("tessdata".to_string()),
+        ]);
+    }
+    
+    for path in possible_paths.into_iter().flatten() {
+        let tessdata_path = std::path::Path::new(&path);
+        let eng_data = tessdata_path.join("eng.traineddata");
+        
+        info!("Checking tessdata path: {}", tessdata_path.display());
+        
+        if eng_data.exists() {
+            info!("Found tessdata at: {}", tessdata_path.display());
+            return Some(path);
+        }
+    }
+    
+    info!("No tessdata found in any checked locations");
+    None
+}
+
 async fn perform_ocr(image: &image::DynamicImage, state: &AppState) -> Result<OcrResult, String> {
     info!("Performing OCR on captured image");
     
     // Preprocess image for better OCR
     let processed_image = preprocess_image_for_ocr(image);
     
-    // Save processed image for debugging
-    save_debug_image(&processed_image, "processed_image.png")?;
+    // Save processed image for debugging (optional - don't fail OCR if this fails)
+    if let Err(e) = save_debug_image(&processed_image, "processed_image.png") {
+        info!("Warning: Could not save processed debug image: {}", e);
+    }
     
     // Save processed image to memory as PNG for Tesseract
     let mut image_bytes = Vec::new();
@@ -386,9 +461,28 @@ async fn perform_ocr(image: &image::DynamicImage, state: &AppState) -> Result<Oc
     
     info!("Image processed and encoded as PNG, size: {} bytes", image_bytes.len());
     
-    // Initialize Tesseract with better settings
-    let tesseract = Tesseract::new(None, Some("eng"))
-        .map_err(|e| format!("Failed to initialize Tesseract: {}", e))?;
+    // Get tessdata path for better compatibility
+    let tessdata_path = get_tessdata_path();
+    
+    if tessdata_path.is_none() {
+        info!("No tessdata path found, letting Tesseract use default search paths");
+    }
+    
+    // Initialize Tesseract with tessdata path (try both with and without explicit path)
+    let tesseract = if let Some(ref path) = tessdata_path {
+        info!("Initializing Tesseract with tessdata path: {}", path);
+        Tesseract::new(Some(path), Some("eng"))
+    } else {
+        info!("Initializing Tesseract with default paths");
+        Tesseract::new(None, Some("eng"))
+    }.map_err(|e| {
+        let base_msg = format!("Failed to initialize Tesseract: {}", e);
+        if cfg!(target_os = "windows") {
+            format!("{}. \n\nTo fix this on Windows:\n1. Install Tesseract OCR from https://github.com/UB-Mannheim/tesseract/wiki\n2. Or set TESSDATA_PREFIX environment variable to your tessdata directory\n3. Or place tessdata folder next to the application executable", base_msg)
+        } else {
+            format!("{}. Please ensure Tesseract is installed with language data", base_msg)
+        }
+    })?;
     
     // Configure Tesseract for better text recognition (chain the method calls)
     let tesseract = tesseract

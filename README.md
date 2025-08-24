@@ -39,6 +39,11 @@ A modern desktop OCR application built with Tauri for real-time text extraction 
 # Install Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
+# Install Tesseract OCR (REQUIRED)
+# Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki
+# macOS: brew install tesseract
+# Linux: sudo apt-get install tesseract-ocr tesseract-ocr-eng
+
 # Install system dependencies (Linux)
 sudo apt-get install webkit2gtk-4.0-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
 
@@ -140,6 +145,12 @@ The app loads events from `events.json` containing:
 - **Linux**: Modern Linux distribution with GTK 3.24+
 
 ## 🐛 Troubleshooting
+
+**"Failed to initialize Tesseract" error:**
+- **Windows**: Install Tesseract OCR from https://github.com/UB-Mannheim/tesseract/wiki
+- **Alternative**: Set `TESSDATA_PREFIX` environment variable to your tessdata directory
+- **Bundle option**: Place `tessdata` folder with `eng.traineddata` next to executable
+- Check console output for exact tessdata paths being searched
 
 **App won't start:**
 - Check if you have required system libraries (GTK on Linux)
