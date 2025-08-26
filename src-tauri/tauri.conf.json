@@ -1,6 +1,6 @@
 {
   "productName": "Uma Helper",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "identifier": "com.umahelper.dev",
   "build": {
     "beforeBuildCommand": "",
@@ -48,7 +48,7 @@
       "providerShortName": null,
       "signingIdentity": null
     },
-    "resources": ["../events.json"],
+    "resources": ["../events.json", "tessdata"],
     "shortDescription": "",
     "targets": ["deb", "msi"],
     "windows": {

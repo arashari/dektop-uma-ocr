@@ -5,7 +5,7 @@ use anyhow::Result;
 use image::GenericImageView;
 use screenshots::Screen;
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{State, Manager, AppHandle};
 use tesseract::Tesseract;
 use tracing::info;
 use strsim::jaro_winkler;
@@ -122,7 +122,7 @@ fn load_events_json() -> Result<Vec<JsonEvent>> {
 
 // Tauri commands
 #[tauri::command]
-async fn capture_screen_area(area: CaptureArea, state: State<'_, AppState>) -> Result<OcrResult, String> {
+async fn capture_screen_area(area: CaptureArea, state: State<'_, AppState>, app_handle: AppHandle) -> Result<OcrResult, String> {
     info!("Capturing screen area: {:?}", area);
     
     // Get all screens
@@ -154,7 +154,7 @@ async fn capture_screen_area(area: CaptureArea, state: State<'_, AppState>) -> R
     }
     
     // Perform OCR
-    perform_ocr(&cropped, &state).await
+    perform_ocr(&cropped, &state, Some(&app_handle)).await
 }
 
 fn get_writable_debug_dir() -> Result<std::path::PathBuf, String> {
@@ -394,38 +394,54 @@ fn calculate_partial_match(ocr_text: &str, event_text: &str) -> f32 {
     }
 }
 
-fn get_tessdata_path() -> Option<String> {
-    // Try various common tessdata locations
-    let mut possible_paths = vec![
-        std::env::var("TESSDATA_PREFIX").ok(),
-    ];
+fn get_tessdata_path(app_handle: Option<&AppHandle>) -> Option<String> {
+    let mut possible_paths = vec![];
+    
+    // First priority: Try bundled tessdata via Tauri resource API
+    if let Some(handle) = app_handle {
+        if let Ok(resource_path) = handle.path().resource_dir() {
+            let bundled_tessdata = resource_path.join("tessdata");
+            info!("Checking bundled tessdata path: {}", bundled_tessdata.display());
+            
+            let eng_data = bundled_tessdata.join("eng.traineddata");
+            if eng_data.exists() {
+                info!("Found bundled tessdata at: {}", bundled_tessdata.display());
+                return Some(bundled_tessdata.to_string_lossy().to_string());
+            }
+        }
+    }
+    
+    // Fallback to environment variable
+    if let Ok(tessdata_prefix) = std::env::var("TESSDATA_PREFIX") {
+        possible_paths.push(tessdata_prefix);
+    }
     
     // Add executable directory paths
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
-            possible_paths.push(Some(exe_dir.join("tessdata").to_string_lossy().to_string()));
-            possible_paths.push(Some(exe_dir.join("resources").join("tessdata").to_string_lossy().to_string()));
+            possible_paths.push(exe_dir.join("tessdata").to_string_lossy().to_string());
+            possible_paths.push(exe_dir.join("resources").join("tessdata").to_string_lossy().to_string());
         }
     }
     
-    // Add platform-specific paths
+    // Add platform-specific paths as fallback
     if cfg!(target_os = "windows") {
         possible_paths.extend(vec![
-            Some("C:\\Program Files\\Tesseract-OCR\\tessdata".to_string()),
-            Some("C:\\Program Files (x86)\\Tesseract-OCR\\tessdata".to_string()),
-            Some("tessdata".to_string()), // Current directory
+            "C:\\Program Files\\Tesseract-OCR\\tessdata".to_string(),
+            "C:\\Program Files (x86)\\Tesseract-OCR\\tessdata".to_string(),
+            "tessdata".to_string(), // Current directory
         ]);
     } else {
         possible_paths.extend(vec![
-            Some("/usr/share/tesseract-ocr/4.00/tessdata".to_string()),
-            Some("/usr/share/tesseract-ocr/tessdata".to_string()),
-            Some("/usr/local/share/tessdata".to_string()),
-            Some("/opt/homebrew/share/tessdata".to_string()), // macOS Homebrew
-            Some("tessdata".to_string()),
+            "/usr/share/tesseract-ocr/4.00/tessdata".to_string(),
+            "/usr/share/tesseract-ocr/tessdata".to_string(),
+            "/usr/local/share/tessdata".to_string(),
+            "/opt/homebrew/share/tessdata".to_string(), // macOS Homebrew
+            "tessdata".to_string(),
         ]);
     }
     
-    for path in possible_paths.into_iter().flatten() {
+    for path in possible_paths {
         let tessdata_path = std::path::Path::new(&path);
         let eng_data = tessdata_path.join("eng.traineddata");
         
@@ -441,7 +457,7 @@ fn get_tessdata_path() -> Option<String> {
     None
 }
 
-async fn perform_ocr(image: &image::DynamicImage, state: &AppState) -> Result<OcrResult, String> {
+async fn perform_ocr(image: &image::DynamicImage, state: &AppState, app_handle: Option<&AppHandle>) -> Result<OcrResult, String> {
     info!("Performing OCR on captured image");
     
     // Preprocess image for better OCR
@@ -461,8 +477,8 @@ async fn perform_ocr(image: &image::DynamicImage, state: &AppState) -> Result<Oc
     
     info!("Image processed and encoded as PNG, size: {} bytes", image_bytes.len());
     
-    // Get tessdata path for better compatibility
-    let tessdata_path = get_tessdata_path();
+    // Get tessdata path - prioritize bundled version
+    let tessdata_path = get_tessdata_path(app_handle);
     
     if tessdata_path.is_none() {
         info!("No tessdata path found, letting Tesseract use default search paths");
